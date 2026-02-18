@@ -27,7 +27,7 @@ Night Walkers is a personal safety app designed for anyone walking alone at nigh
 
 ## Download
 
-- [Get the latest Android APK](releases/NightWalkers-v6.1.0-release.apk)
+- [Download the latest Android APK (v6.1.0)](releases/NightWalkers-v6.1.0-release.apk)
 
 ## Privacy & Security
 
