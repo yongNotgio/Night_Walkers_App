@@ -6,12 +6,16 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.app.Service
+import android.content.pm.PackageManager
 import android.content.Intent
 import android.content.IntentFilter
 import android.database.ContentObserver
+import android.location.Location
+import android.location.LocationManager
 import android.media.AudioManager
-import android.media.Ringtone
-import android.media.RingtoneManager
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.media.MediaPlayer
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -19,6 +23,11 @@ import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.provider.Settings
+import android.telephony.SmsManager
+import android.telephony.SubscriptionManager
+import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
+import org.json.JSONArray
 
 class VolumeTriggerService : Service() {
     companion object {
@@ -42,7 +51,11 @@ class VolumeTriggerService : Service() {
     private val lastVolumes = mutableMapOf<Int, Int>()
     private var pressCount = 0
     private var firstPressAt = 0L
-    private var ringtone: Ringtone? = null
+    private var mediaPlayer: MediaPlayer? = null
+    private var cameraManager: CameraManager? = null
+    private var flashCameraId: String? = null
+    private var isTorchOn = false
+    private var flashBlinkRunnable: Runnable? = null
     private var isAlarmActive = false
 
     private val volumeChangedReceiver = object : BroadcastReceiver() {
@@ -73,6 +86,8 @@ class VolumeTriggerService : Service() {
         super.onCreate()
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         notificationManager = getSystemService(NotificationManager::class.java)
+        cameraManager = getSystemService(CAMERA_SERVICE) as? CameraManager
+        flashCameraId = findFlashCameraId()
         trackedStreams.forEach { stream ->
             lastVolumes[stream] = currentVolume(stream)
         }
@@ -199,14 +214,9 @@ class VolumeTriggerService : Service() {
         if (isAlarmActive) return
         isAlarmActive = true
 
-        val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-        ringtone = RingtoneManager.getRingtone(this, alarmUri)?.apply {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                isLooping = true
-            }
-            play()
-        }
+        playConfiguredAlarmFromFlutterAssets()
+        startFlashBlink()
+        sendEmergencySmsToSavedContacts()
 
         val vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -225,10 +235,193 @@ class VolumeTriggerService : Service() {
     private fun stopBackgroundAlarm() {
         if (!isAlarmActive) return
         isAlarmActive = false
-        runCatching { ringtone?.stop() }
-        ringtone = null
+        stopConfiguredAlarm()
+        stopFlashBlink()
         val vibrator = getSystemService(VIBRATOR_SERVICE) as? Vibrator
         vibrator?.cancel()
         updateNotification(0)
+    }
+
+    private fun playConfiguredAlarmFromFlutterAssets() {
+        stopConfiguredAlarm()
+        val selected = getFlutterPref("selected_ringtone")?.trim().orEmpty()
+        val filename = when (selected) {
+            "", "Default Alarm" -> "alarm.wav"
+            "iPhone Amber Alert" -> "iphone_amber_alert.mp3"
+            "Emergency Siren" -> "emergency_alarm_siren.mp3"
+            "Message Alert" -> "message_alert.mp3"
+            else -> selected
+        }
+        val assetPath = "flutter_assets/assets/sounds/$filename"
+        runCatching {
+            assets.openFd(assetPath).use { afd ->
+                mediaPlayer = MediaPlayer().apply {
+                    setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                    isLooping = true
+                    setAudioStreamType(AudioManager.STREAM_ALARM)
+                    prepare()
+                    start()
+                }
+            }
+        }.onFailure {
+            // Fallback to default bundled alarm if selected asset can't be opened.
+            runCatching {
+                assets.openFd("flutter_assets/assets/sounds/alarm.wav").use { afd ->
+                    mediaPlayer = MediaPlayer().apply {
+                        setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                        isLooping = true
+                        setAudioStreamType(AudioManager.STREAM_ALARM)
+                        prepare()
+                        start()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun stopConfiguredAlarm() {
+        runCatching { mediaPlayer?.stop() }
+        runCatching { mediaPlayer?.release() }
+        mediaPlayer = null
+    }
+
+    private fun findFlashCameraId(): String? {
+        val manager = cameraManager ?: return null
+        return runCatching {
+            manager.cameraIdList.firstOrNull { id ->
+                val chars = manager.getCameraCharacteristics(id)
+                chars.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+            }
+        }.getOrNull()
+    }
+
+    private fun startFlashBlink() {
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            return
+        }
+        val manager = cameraManager ?: return
+        val cameraId = flashCameraId ?: return
+
+        val blinkMs = getFlutterPref("flashlight_blink_speed")?.toLongOrNull() ?: 167L
+        val interval = blinkMs.coerceIn(50L, 1000L)
+
+        flashBlinkRunnable?.let { mainHandler.removeCallbacks(it) }
+        flashBlinkRunnable = object : Runnable {
+            override fun run() {
+                if (!isAlarmActive) return
+                isTorchOn = !isTorchOn
+                runCatching { manager.setTorchMode(cameraId, isTorchOn) }
+                mainHandler.postDelayed(this, interval)
+            }
+        }
+        mainHandler.post(flashBlinkRunnable!!)
+    }
+
+    private fun stopFlashBlink() {
+        flashBlinkRunnable?.let { mainHandler.removeCallbacks(it) }
+        flashBlinkRunnable = null
+        if (isTorchOn) {
+            val manager = cameraManager
+            val cameraId = flashCameraId
+            if (manager != null && cameraId != null) {
+                runCatching { manager.setTorchMode(cameraId, false) }
+            }
+        }
+        isTorchOn = false
+    }
+
+    private fun getFlutterPref(key: String): String? {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+        val direct = prefs.getString(key, null)
+        if (!direct.isNullOrBlank()) return direct
+        return prefs.getString("flutter.$key", null)
+    }
+
+    private fun sendEmergencySmsToSavedContacts() {
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+            return
+        }
+
+        val contactsJson = getFlutterPref("emergency_contacts") ?: return
+        val numbers = mutableListOf<String>()
+        runCatching {
+            val arr = JSONArray(contactsJson)
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val raw = obj.optString("number", "").trim()
+                if (raw.isNotEmpty()) numbers.add(raw)
+            }
+        }
+        if (numbers.isEmpty()) return
+
+        val baseMessage = getFlutterPref("custom_message")?.takeIf { it.isNotBlank() }
+            ?: "This is an emergency! Please help me immediately!"
+        val locationSuffix = buildLocationSuffix()
+        val message = if (locationSuffix.isNotEmpty()) "$baseMessage$locationSuffix" else baseMessage
+
+        val smsManager = getSmsManager()
+        for (number in numbers) {
+            runCatching {
+                val parts = smsManager.divideMessage(message)
+                if (parts.size > 1) {
+                    smsManager.sendMultipartTextMessage(number, null, ArrayList(parts), null, null)
+                } else {
+                    smsManager.sendTextMessage(number, null, message, null, null)
+                }
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun getSmsManager(): SmsManager {
+        val defaultSubId = SmsManager.getDefaultSmsSubscriptionId()
+        if (defaultSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            runCatching { return SmsManager.getSmsManagerForSubscriptionId(defaultSubId) }
+        }
+        val subscriptionManager = getSystemService(SubscriptionManager::class.java)
+        val activeSubId = runCatching {
+            subscriptionManager?.activeSubscriptionInfoList
+                ?.firstOrNull()
+                ?.subscriptionId
+        }.getOrNull()
+        if (activeSubId != null && activeSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            runCatching { return SmsManager.getSmsManagerForSubscriptionId(activeSubId) }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val manager = getSystemService(SmsManager::class.java)
+            if (manager != null) return manager
+        }
+        return SmsManager.getDefault()
+    }
+
+    private fun buildLocationSuffix(): String {
+        val fineGranted = ContextCompat.checkSelfPermission(
+            this,
+            android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val coarseGranted = ContextCompat.checkSelfPermission(
+            this,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!fineGranted && !coarseGranted) return ""
+
+        val locationManager = getSystemService(LOCATION_SERVICE) as? LocationManager ?: return ""
+        if (!LocationManagerCompat.isLocationEnabled(locationManager)) return ""
+        val location = getBestLastKnownLocation(locationManager) ?: return ""
+        return " My location coordinates are: Latitude ${location.latitude}, Longitude ${location.longitude}."
+    }
+
+    private fun getBestLastKnownLocation(locationManager: LocationManager): Location? {
+        val providers = runCatching { locationManager.getProviders(true) }.getOrDefault(emptyList())
+        if (providers.isEmpty()) return null
+
+        var best: Location? = null
+        for (provider in providers) {
+            val loc = runCatching { locationManager.getLastKnownLocation(provider) }.getOrNull() ?: continue
+            if (best == null || loc.time > best!!.time) {
+                best = loc
+            }
+        }
+        return best
     }
 }
