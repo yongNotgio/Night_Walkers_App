@@ -2,6 +2,10 @@
 
 A lightweight safety app designed for people walking alone at night. Activates an emergency alert system that sends location data and notifications to pre-configured emergency contacts with one panic button press.
 
+## Download APK
+
+- Latest Android release APK: [`releases/NightWalkers-v1.0.0-release.apk`](releases/NightWalkers-v1.0.0-release.apk)
+
 ## Features
 
 - **Panic Button**: One-tap emergency activation with visual countdown
