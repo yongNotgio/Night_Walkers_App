@@ -28,6 +28,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _alwaysMaxVolume = false; 
   double _alarmVolume = 1.0; 
   bool _call911Enabled = false;
+  bool _backgroundModeEnabled = false;
 
   final TextEditingController _messageController = TextEditingController();
   final Telephony _telephony = Telephony.instance;
@@ -74,6 +75,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _alwaysMaxVolume = prefs.getBool('always_max_volume') ?? false;
       _alarmVolume = prefs.getDouble('alarm_volume') ?? 1.0;
       _call911Enabled = prefs.getBool('call_911_enabled') ?? false;
+      _backgroundModeEnabled = prefs.getBool('background_mode_enabled') ?? false;
     });
     final storedRingtone = prefs.getString('selected_ringtone');
     if (storedRingtone != _selectedRingtone) {
@@ -156,6 +158,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
     );
+  }
+
+  Future<void> _setBackgroundMode(bool enabled) async {
+    setState(() => _backgroundModeEnabled = enabled);
+    if (enabled) {
+      final notificationPermission = await Permission.notification.request();
+      if (!notificationPermission.isGranted) {
+        if (!mounted) return;
+        setState(() => _backgroundModeEnabled = false);
+        await _saveSetting('background_mode_enabled', false);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Notification permission is required for background mode.'),
+          ),
+        );
+        return;
+      }
+    }
+
+    await _saveSetting('background_mode_enabled', enabled);
+    try {
+      await DirectSmsService.setBackgroundVolumeTriggerEnabled(enabled);
+      final running = await DirectSmsService.isBackgroundVolumeTriggerRunning();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            enabled
+                ? (running
+                    ? 'Background mode enabled. Press volume down 3 times quickly to trigger alarm.'
+                    : 'Background mode requested, but service is not running.')
+                : (running
+                    ? 'Background mode toggle off requested, but service still appears running.'
+                    : 'Background mode disabled.'),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not toggle background mode: $e')),
+      );
+    }
   }
 
   Future<void> _showSmsDiagnostics({required bool sendTest}) async {
@@ -315,12 +361,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
             // Emergency Features Section
             _buildSection('Emergency Features', [
               SwitchListTile(
@@ -525,6 +570,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // App Behavior Section
             _buildSection('App Behavior', [
               SwitchListTile(
+                title: const Text('Background Mode'),
+                subtitle: const Text(
+                  'When minimized, press volume down 3 times quickly to trigger the alarm (Android).',
+                ),
+                value: _backgroundModeEnabled,
+                onChanged: _setBackgroundMode,
+              ),
+              SwitchListTile(
                 title: const Text('Quick Activation'),
                 subtitle: const Text(
                   'Activate panic mode with single tap (removes confirmation)',
@@ -649,8 +702,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ]),
-          ],
-        ),
+        ],
       ),
     );
   }
