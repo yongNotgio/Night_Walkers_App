@@ -23,10 +23,14 @@ class SmsService {
         return;
       }
 
-      // Create Google Maps link with coordinates
-      final String mapsLink = 'https://maps.google.com/?q=$latitude,$longitude';
+      // Default to plain text coordinates to avoid carrier/link filtering.
+      final prefs = await SharedPreferences.getInstance();
+      final sendAsPlainText =
+          prefs.getBool('send_location_as_plain_text') ?? true;
       final String message =
-          'EMERGENCY: I need help! My current location is: $mapsLink';
+          sendAsPlainText
+              ? 'EMERGENCY: I need help! My current location is Latitude $latitude, Longitude $longitude.'
+              : 'EMERGENCY: I need help! My current location is: https://maps.google.com/?q=$latitude,$longitude';
 
       // Send SMS to all emergency contacts
       for (final contact in contacts) {

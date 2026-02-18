@@ -3,6 +3,7 @@ package com.example.night_walkers_app
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.BroadcastReceiver
+import android.content.Context
 import android.app.ActivityManager
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -118,10 +119,19 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        registerReceiver(
-            volumeTriggerReceiver,
-            IntentFilter(VolumeTriggerService.ACTION_TRIGGER)
-        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(
+                volumeTriggerReceiver,
+                IntentFilter(VolumeTriggerService.ACTION_TRIGGER),
+                Context.RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(
+                volumeTriggerReceiver,
+                IntentFilter(VolumeTriggerService.ACTION_TRIGGER)
+            )
+        }
     }
 
     override fun onDestroy() {
@@ -132,16 +142,36 @@ class MainActivity : FlutterActivity() {
 
     @Suppress("DEPRECATION")
     private fun getSmsManager(subId: Int?): Pair<SmsManager, String> {
-        val targetSubId = when {
-            subId != null && subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID -> subId
-            else -> SmsManager.getDefaultSmsSubscriptionId()
+        val candidateSubIds = mutableListOf<Int>()
+        if (subId != null && subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            candidateSubIds.add(subId)
+        }
+        val defaultSubId = SmsManager.getDefaultSmsSubscriptionId()
+        if (defaultSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID &&
+            !candidateSubIds.contains(defaultSubId)
+        ) {
+            candidateSubIds.add(defaultSubId)
+        }
+        val subscriptionManager = getSystemService(SubscriptionManager::class.java)
+        val activeSubIds = runCatching {
+            subscriptionManager?.activeSubscriptionInfoList
+                ?.map { it.subscriptionId }
+                ?.filter { it != SubscriptionManager.INVALID_SUBSCRIPTION_ID }
+                ?: emptyList()
+        }.getOrDefault(emptyList())
+        for (id in activeSubIds) {
+            if (!candidateSubIds.contains(id)) {
+                candidateSubIds.add(id)
+            }
         }
 
-        if (targetSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-            return Pair(
-                SmsManager.getSmsManagerForSubscriptionId(targetSubId),
-                "subscription:$targetSubId"
-            )
+        for (candidate in candidateSubIds) {
+            val manager = runCatching {
+                SmsManager.getSmsManagerForSubscriptionId(candidate)
+            }.getOrNull()
+            if (manager != null) {
+                return Pair(manager, "subscription:$candidate")
+            }
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

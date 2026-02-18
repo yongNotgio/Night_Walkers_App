@@ -83,10 +83,19 @@ class VolumeTriggerService : Service() {
             true,
             volumeObserver
         )
-        registerReceiver(
-            volumeChangedReceiver,
-            IntentFilter("android.media.VOLUME_CHANGED_ACTION")
-        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(
+                volumeChangedReceiver,
+                IntentFilter("android.media.VOLUME_CHANGED_ACTION"),
+                RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(
+                volumeChangedReceiver,
+                IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+            )
+        }
     }
 
     override fun onDestroy() {
