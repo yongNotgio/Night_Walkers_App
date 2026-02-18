@@ -245,10 +245,11 @@ class _WelcomeStep extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(20),
               child: Image.asset(
-                'assets/images/logo.png',
+                'assets/images/logo_fixed.png',
                 width: 120,
                 height: 120,
                 fit: BoxFit.cover,
+                filterQuality: FilterQuality.high,
               ),
             ),
           ),
