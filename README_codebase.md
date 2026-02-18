@@ -1,42 +1,47 @@
-# Night Walkers App
+# Night Walkers App – Codebase Documentation
 
-Night Walkers is a personal safety app designed for anyone walking alone at night. With a single tap, you can instantly alert your emergency contacts and share your real-time location, helping you feel safer wherever you go.
+This document provides a technical overview of the Night Walkers App codebase for developers and contributors.
 
-## Key Features
+## Project Structure
 
-- **Panic Button:** Instantly send an emergency alert and your live location to trusted contacts.
-- **Location Sharing:** Real-time GPS tracking so your contacts know where you are.
-- **Multi-Channel Alerts:** Sends SMS, triggers a loud alarm, flashes your flashlight, and vibrates your phone for maximum visibility.
-- **Emergency Contacts:** Easily add and manage the people you trust most.
-- **Volume Button Trigger:** Activate the alarm discreetly by pressing your phone’s volume button multiple times.
-- **Offline Support:** Core safety features work even without an internet connection.
-- **Cross-Platform:** Available for Android, iOS, Web, Windows, and Linux.
+```
+lib/
+├── main.dart                 # Application entry point & initialization
+├── screens/
+│   ├── homescreen.dart       # Main home screen with panic button
+│   ├── onboarding_screen.dart # First-time user setup
+│   ├── map_screen.dart       # Live map display of location
+│   ├── contacts_screen.dart  # Emergency contacts management
+│   └── settings_screen.dart  # App preferences & configuration
+├── services/
+│   ├── direct_sms_service.dart      # SMS sending with volume trigger support
+│   ├── sms_service.dart             # Alternative SMS implementation
+│   ├── location_service.dart        # GPS location fetching & tracking
+│   ├── flashlight_service.dart      # Torch/LED control
+│   └── sound_service.dart           # Audio alarm & sound effects
+└── widgets/
+    ├── panic_button.dart             # Main panic button component
+    ├── panic_countdown_overlay.dart  # Countdown animation overlay
+    ├── status_dashboard.dart         # Status display widget
+    ├── user_location_marker.dart     # Map location marker
+    └── fixed_compass.dart            # Compass widget
 
-## How It Works
+assets/
+├── animations/          # Lottie animation files (welcome, features)
+├── images/              # App icons and UI images
+└── sounds/              # Audio files for alerts
+```
 
-1. **Set Up Emergency Contacts:** Add friends or family who will be notified in an emergency.
-2. **Activate the Panic Button:** Tap the button or use the volume trigger to start the alarm.
-3. **Automatic Alerts:** Your contacts receive your location and a custom message via SMS.
-4. **Stay Visible:** The app sounds an alarm, flashes your flashlight, and vibrates to attract attention.
+## Key Dependencies
 
-## Who Is It For?
-
-- Night walkers, joggers, and commuters
-- Students and campus safety
-- Anyone who wants extra peace of mind when alone
-
-## Download
-
-- [Get the latest Android APK](releases/NightWalkers-v6.1.0-release.apk)
-
-## Privacy & Security
-
-Night Walkers only shares your location with your chosen emergency contacts during an active alert. Your data stays private and secure.
-
----
-
-**Version:** 6.1.0  
-**Last Updated:** February 2026
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `geolocator` | ^10.1.1 | GPS location services |
+| `flutter_map` | ^6.2.1 | Interactive map display |
+| `permission_handler` | ^11.4.0 | Runtime permission management |
+| `torch_light` | ^1.1.0 | Flashlight/LED control |
+| `audioplayers` | ^5.2.1 | Audio alarm playback |
+| `vibration` | ^3.1.3 | Haptic feedback |
 | `another_telephony` | ^0.4.1 | Telephony & SMS access |
 | `flutter_contacts` | ^1.1.9+2 | Contact management |
 | `shared_preferences` | ^2.5.3 | Local data persistence |
@@ -203,6 +208,6 @@ For issues, feature requests, or questions:
 
 ---
 
-**Version**: 1.0.0  
+**Version**: 6.1.0  
 **Last Updated**: February 2026  
 **Status**: Active Development
