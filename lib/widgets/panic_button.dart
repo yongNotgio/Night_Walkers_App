@@ -28,6 +28,7 @@ class PanicButton extends StatefulWidget {
   final bool alwaysMaxVolume;
   final double alarmVolume;
   final bool call911Enabled;
+  final int externalTriggerToken;
 
   const PanicButton({
     super.key,
@@ -45,6 +46,7 @@ class PanicButton extends StatefulWidget {
     required this.alwaysMaxVolume,
     required this.alarmVolume,
     required this.call911Enabled,
+    this.externalTriggerToken = 0,
   });
 
   @override
@@ -323,6 +325,16 @@ class _PanicButtonState extends State<PanicButton> {
       }
     }
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant PanicButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.externalTriggerToken != oldWidget.externalTriggerToken &&
+        widget.externalTriggerToken > 0 &&
+        !_isBlinking) {
+      _startBlinking();
+    }
   }
 
   @override

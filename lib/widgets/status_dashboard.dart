@@ -30,7 +30,7 @@ class _StatusDashboardState extends State<StatusDashboard> {
         final hasMissing = perms?.any((p) => !p.status.isGranted) ?? false;
         final missing = perms?.where((p) => !p.status.isGranted).toList() ?? [];
         return Card(
-          margin: const EdgeInsets.all(16),
+          margin: EdgeInsets.zero,
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -90,7 +90,28 @@ class _StatusDashboardState extends State<StatusDashboard> {
                           );
                         },
                       ),
-                    const Text('Status Dashboard', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    Text(
+                      'Status Dashboard',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: hasMissing ? Colors.orange.withOpacity(0.14) : Colors.green.withOpacity(0.14),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        hasMissing ? 'Needs Attention' : 'All Good',
+                        style: TextStyle(
+                          color: hasMissing ? Colors.orange.shade800 : Colors.green.shade800,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
