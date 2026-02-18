@@ -4,20 +4,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:night_walkers_app/screens/onboarding_screen.dart';
 
 void main() {
-  testWidgets('feature tile renders provided icon and text', (WidgetTester tester) async {
+  testWidgets('onboarding welcome renders core headline', (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(
-        home: Scaffold(
-          body: FeatureTile(
-            icon: Icons.warning,
-            text: 'Panic alerts are available',
-          ),
-        ),
+        home: OnboardingScreen(),
       ),
     );
     await tester.pump();
 
-    expect(find.byIcon(Icons.warning), findsOneWidget);
-    expect(find.text('Panic alerts are available'), findsOneWidget);
+    expect(find.text('Night Walkers'), findsOneWidget);
+    expect(find.text('Setup takes less than a minute.'), findsOneWidget);
   });
 }
