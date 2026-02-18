@@ -1,23 +1,36 @@
 package com.example.night_walkers_app
 
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.BroadcastReceiver
+import android.app.ActivityManager
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.telephony.SmsManager
 import android.telephony.SubscriptionManager
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val channelName = "night_walkers/direct_sms"
+    private var directSmsChannel: MethodChannel? = null
+
+    private val volumeTriggerReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) {
+            if (intent?.action == VolumeTriggerService.ACTION_TRIGGER) {
+                directSmsChannel?.invokeMethod("onVolumeTrigger", null)
+            }
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
-            .setMethodCallHandler { call, result ->
+        directSmsChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+        directSmsChannel?.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "sendDirectSms" -> {
                         val to = call.argument<String>("to")
@@ -77,9 +90,44 @@ class MainActivity : FlutterActivity() {
                         }
                     }
 
+                    "setBackgroundVolumeTriggerEnabled" -> {
+                        val enabled = call.argument<Boolean>("enabled") ?: false
+                        try {
+                            if (enabled) {
+                                val intent = Intent(this, VolumeTriggerService::class.java)
+                                ContextCompat.startForegroundService(this, intent)
+                            } else {
+                                stopService(Intent(this, VolumeTriggerService::class.java))
+                            }
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("background_trigger_failed", e.message, e.toString())
+                        }
+                    }
+
+                    "isBackgroundVolumeTriggerRunning" -> {
+                        try {
+                            val running = isServiceRunning(VolumeTriggerService::class.java)
+                            result.success(running)
+                        } catch (e: Exception) {
+                            result.error("background_trigger_status_failed", e.message, e.toString())
+                        }
+                    }
+
                     else -> result.notImplemented()
                 }
             }
+
+        registerReceiver(
+            volumeTriggerReceiver,
+            IntentFilter(VolumeTriggerService.ACTION_TRIGGER)
+        )
+    }
+
+    override fun onDestroy() {
+        runCatching { unregisterReceiver(volumeTriggerReceiver) }
+        directSmsChannel = null
+        super.onDestroy()
     }
 
     @Suppress("DEPRECATION")
@@ -104,5 +152,16 @@ class MainActivity : FlutterActivity() {
         }
 
         return Pair(SmsManager.getDefault(), "getDefault")
+    }
+
+    @Suppress("DEPRECATION")
+    private fun isServiceRunning(serviceClass: Class<*>): Boolean {
+        val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+        for (service in manager.getRunningServices(Int.MAX_VALUE)) {
+            if (serviceClass.name == service.service.className) {
+                return true
+            }
+        }
+        return false
     }
 }
