@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.database.ContentObserver
 import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
 import android.media.AudioManager
 import android.hardware.camera2.CameraCharacteristics
@@ -28,6 +29,8 @@ import android.telephony.SubscriptionManager
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import org.json.JSONArray
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class VolumeTriggerService : Service() {
     companion object {
@@ -338,6 +341,14 @@ class VolumeTriggerService : Service() {
     }
 
     private fun sendEmergencySmsToSavedContacts() {
+        // Run on a background thread so we can wait for a fresh location fix
+        // without blocking the main thread.
+        Thread {
+            sendEmergencySmsBlocking()
+        }.start()
+    }
+
+    private fun sendEmergencySmsBlocking() {
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
             return
         }
@@ -356,7 +367,7 @@ class VolumeTriggerService : Service() {
 
         val baseMessage = getFlutterPref("custom_message")?.takeIf { it.isNotBlank() }
             ?: "This is an emergency! Please help me immediately!"
-        val locationSuffix = buildLocationSuffix()
+        val locationSuffix = buildLocationSuffixWithFreshFix()
         val message = if (locationSuffix.isNotEmpty()) "$baseMessage$locationSuffix" else baseMessage
 
         val smsManager = getSmsManager()
@@ -394,7 +405,12 @@ class VolumeTriggerService : Service() {
         return SmsManager.getDefault()
     }
 
-    private fun buildLocationSuffix(): String {
+    /**
+     * Tries to get a fresh location fix, falling back to the cached location.
+     * Blocks the calling thread for up to ~8 seconds while waiting for GPS.
+     * Must NOT be called on the main thread.
+     */
+    private fun buildLocationSuffixWithFreshFix(): String {
         val fineGranted = ContextCompat.checkSelfPermission(
             this,
             android.Manifest.permission.ACCESS_FINE_LOCATION
@@ -407,8 +423,87 @@ class VolumeTriggerService : Service() {
 
         val locationManager = getSystemService(LOCATION_SERVICE) as? LocationManager ?: return ""
         if (!LocationManagerCompat.isLocationEnabled(locationManager)) return ""
-        val location = getBestLastKnownLocation(locationManager) ?: return ""
+
+        // Try cached location first — if it's recent enough (< 2 min), use it.
+        val cached = getBestLastKnownLocation(locationManager)
+        if (cached != null && (System.currentTimeMillis() - cached.time) < 120_000L) {
+            return formatLocationSuffix(cached)
+        }
+
+        // Request a fresh fix with a timeout.
+        val freshLocation = requestFreshLocation(locationManager, fineGranted)
+        if (freshLocation != null) {
+            return formatLocationSuffix(freshLocation)
+        }
+
+        // Last resort: use stale cached location if any.
+        if (cached != null) {
+            return formatLocationSuffix(cached)
+        }
+        return ""
+    }
+
+    private fun formatLocationSuffix(location: Location): String {
         return " My location coordinates are: Latitude ${location.latitude}, Longitude ${location.longitude}."
+    }
+
+    /**
+     * Requests a single fresh location fix, blocking for up to [timeoutSeconds] seconds.
+     */
+    private fun requestFreshLocation(locationManager: LocationManager, hasFinePermission: Boolean): Location? {
+        val provider = if (hasFinePermission && locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            LocationManager.GPS_PROVIDER
+        } else if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+            LocationManager.NETWORK_PROVIDER
+        } else if (locationManager.isProviderEnabled(LocationManager.PASSIVE_PROVIDER)) {
+            LocationManager.PASSIVE_PROVIDER
+        } else {
+            return null
+        }
+
+        val latch = CountDownLatch(1)
+        var result: Location? = null
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // API 30+: use getCurrentLocation which is designed for single fixes.
+            runCatching {
+                locationManager.getCurrentLocation(
+                    provider,
+                    null, // CancellationSignal
+                    mainExecutor
+                ) { location ->
+                    result = location
+                    latch.countDown()
+                }
+            }.onFailure { latch.countDown() }
+        } else {
+            // Older APIs: use requestSingleUpdate.
+            val locationListener = object : LocationListener {
+                override fun onLocationChanged(location: Location) {
+                    result = location
+                    latch.countDown()
+                    runCatching { locationManager.removeUpdates(this) }
+                }
+                @Deprecated("Deprecated in API")
+                override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+                override fun onProviderEnabled(provider: String) {}
+                override fun onProviderDisabled(provider: String) {
+                    latch.countDown()
+                }
+            }
+            runCatching {
+                mainHandler.post {
+                    runCatching {
+                        @Suppress("DEPRECATION")
+                        locationManager.requestSingleUpdate(provider, locationListener, Looper.getMainLooper())
+                    }.onFailure { latch.countDown() }
+                }
+            }.onFailure { latch.countDown() }
+        }
+
+        // Wait up to 8 seconds for a fix.
+        latch.await(8, TimeUnit.SECONDS)
+        return result
     }
 
     private fun getBestLastKnownLocation(locationManager: LocationManager): Location? {
