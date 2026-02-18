@@ -6,11 +6,12 @@ import 'package:night_walkers_app/services/sound_service.dart';
 
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:telephony/telephony.dart';
 import 'dart:convert';
 import 'package:volume_controller/volume_controller.dart';
 import 'package:night_walkers_app/widgets/panic_countdown_overlay.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:night_walkers_app/services/direct_sms_service.dart';
 
 class PanicButton extends StatefulWidget {
   final bool soundEnabled;    
@@ -54,31 +55,13 @@ class _PanicButtonState extends State<PanicButton> {
   bool _isBlinking = false;
   bool _isRed = true;
   Timer? _blinkTimer;
-  Timer? _cancelTimer;
-  final bool _showCancelInstruction = false;
   double _initialVolume = 0.0;
-  bool _call911Enabled = false;
 
   ScaffoldFeatureController<SnackBar, SnackBarClosedReason>?
   _snackBarController;
 
   final Color neonRed = Colors.redAccent.shade100;
   final Color dimRed = Colors.redAccent.shade100.withAlpha(51);
-
-  final Telephony telephony = Telephony.instance;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadSettings();
-  }
-
-  void _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _call911Enabled = prefs.getBool('call_911_enabled') ?? false;
-    });
-  }
 
   void _startBlinking() async {
     bool confirmed = true; // Assume confirmed by default ....
@@ -127,6 +110,7 @@ class _PanicButtonState extends State<PanicButton> {
         await VolumeController.instance.setVolume(targetVolume);
         SoundService.playAlarm(filename: widget.selectedRingtone, volume: 1.0);
       }
+      if (!mounted) return;
 
       _snackBarController = ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -172,23 +156,18 @@ class _PanicButtonState extends State<PanicButton> {
       }
       String message = widget.customMessage;
       if (position != null) {
-        if (widget.sendLocationAsPlainText) {
-          message +=
-              ' My location coordinates are: Latitude ${position.latitude}, Longitude ${position.longitude}';
-        } else {
-          message +=
-              ' My location is: https://maps.google.com/?q=${position.latitude},${position.longitude}';
-        }
+        message +=
+            ' My location coordinates are: Latitude ${position.latitude}, Longitude ${position.longitude}';
       }
       if (widget.autoLocationShare) {
         try {
           await _sendEmergencySmsToAllContacts(message);
         } catch (e) {
-          print('Failed to send SMS: $e');
+          debugPrint('Failed to send SMS: $e');
         }
       }
 
-      if (_call911Enabled) {
+      if (widget.call911Enabled) {
         _initiate911Call();
       }
     }
@@ -196,7 +175,6 @@ class _PanicButtonState extends State<PanicButton> {
 
   void _stopBlinking() {
     _blinkTimer?.cancel();
-    _cancelTimer?.cancel();
     setState(() {
       _isBlinking = false;
       _isRed = true;
@@ -226,6 +204,7 @@ class _PanicButtonState extends State<PanicButton> {
 
   Future<Position?> _getCurrentLocation() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!mounted) return null;
     if (!serviceEnabled) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Location services are disabled.')),
@@ -234,8 +213,10 @@ class _PanicButtonState extends State<PanicButton> {
     }
 
     LocationPermission permission = await Geolocator.checkPermission();
+    if (!mounted) return null;
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
+      if (!mounted) return null;
       if (permission == LocationPermission.denied) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Location permission denied.')),
@@ -268,28 +249,49 @@ class _PanicButtonState extends State<PanicButton> {
               'number': item['number'].toString(),
             })
         .toList();
-    final bool? permissionsGranted = await telephony.requestSmsPermissions;
-    if (permissionsGranted == true) {
-      for (var contact in contacts) {
-        final number = contact['number'];
-        if (number != null) {
-          try {
-            await telephony.sendSms(to: number, message: message);
-            print('Emergency SMS sent to ${contact['name']} ($number)');
-          } catch (e) {
-            print('Error sending SMS via telephony.sendSms: $e');
-          }
+    final numbers = contacts
+        .map((contact) => contact['number'])
+        .whereType<String>()
+        .where((number) => number.trim().isNotEmpty)
+        .toList();
+    if (numbers.isEmpty) return;
+
+    final smsPermission = await Permission.sms.request();
+    final phonePermission = await Permission.phone.request();
+    if (!smsPermission.isGranted || !phonePermission.isGranted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('SMS/Phone permission denied. Direct SMS unavailable.')),
+        );
+      }
+      return;
+    }
+
+    int sentCount = 0;
+    for (var contact in contacts) {
+      final number = contact['number'];
+      if (number != null) {
+        try {
+          await DirectSmsService.sendSms(to: number, message: message);
+          sentCount++;
+          debugPrint('Emergency SMS sent to ${contact['name']} ($number)');
+        } catch (e) {
+          debugPrint('Error sending SMS via native direct channel: $e');
         }
       }
-      if (mounted) {
+    }
+    if (mounted) {
+      if (sentCount == contacts.length) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Emergency SMS sent to all contacts")),
         );
-      }
-    } else {
-      if (mounted) {
+      } else if (sentCount > 0) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("SMS permission denied")),
+          SnackBar(content: Text("Emergency SMS sent to $sentCount of ${contacts.length} contacts")),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Direct SMS failed on this device.')),
         );
       }
     }
@@ -301,7 +303,7 @@ class _PanicButtonState extends State<PanicButton> {
       await launchUrl(Uri.parse(url));
     } else {
       // Handle error: could not launch URL
-      print('Could not launch $url');
+      debugPrint('Could not launch $url');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not initiate 911 call.')),
@@ -391,17 +393,11 @@ class _PanicButtonState extends State<PanicButton> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 150),
-                      child: Icon(
-                        Icons.warning,
-                        key: ValueKey<String>(
-                          '${_isBlinking}_${_isRed.toString()}',
-                        ),
-                        color: currentColor,
-                        size: 90,
-                        shadows: glow,
-                      ),
+                    Icon(
+                      Icons.warning,
+                      color: currentColor,
+                      size: 90,
+                      shadows: glow,
                     ),
                     const SizedBox(height: 10),
                     AnimatedDefaultTextStyle(

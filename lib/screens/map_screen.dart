@@ -9,10 +9,6 @@ import 'package:night_walkers_app/widgets/user_location_marker.dart';
 import 'package:night_walkers_app/widgets/fixed_compass.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-void main() {
-  runApp(const MaterialApp(home: MapScreen()));
-}
-
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
 
@@ -49,9 +45,14 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _checkConnectivity() async {
-    final connectivityResult = await (Connectivity().checkConnectivity());
+    final dynamic connectivityResult = await Connectivity().checkConnectivity();
+    final bool hasConnection =
+        connectivityResult is List<ConnectivityResult>
+            ? connectivityResult.any((result) => result != ConnectivityResult.none)
+            : connectivityResult != ConnectivityResult.none;
+    if (!mounted) return;
     setState(() {
-      _isConnected = connectivityResult != ConnectivityResult.none;
+      _isConnected = hasConnection;
     });
   }
 
@@ -64,6 +65,7 @@ class _MapScreenState extends State<MapScreen> {
 
   void _startCompass() {
     _compassSubscription = FlutterCompass.events?.listen((CompassEvent? event) {
+      if (!mounted) return;
       if (event != null && event.heading != null) {
         setState(() {
           _heading = event.heading!;
@@ -85,6 +87,7 @@ class _MapScreenState extends State<MapScreen> {
     if (permission == LocationPermission.deniedForever) return;
 
     final position = await Geolocator.getCurrentPosition();
+    if (!mounted) return;
     setState(() {
       _currentPosition = LatLng(position.latitude, position.longitude);
       _updateFieldOfVisionPolygon();
@@ -94,7 +97,7 @@ class _MapScreenState extends State<MapScreen> {
   void _updateFieldOfVisionPolygon() {
     if (_currentPosition == null || _heading == null) return;
 
-    const double distance =350; // Distance in meters for the field of vision (increased)
+    const double distance = 350;
     const double fovAngle = 60; // Field of vision angle in degrees
     const int segments = 20; // Number of segments for the arcs
 
@@ -114,9 +117,7 @@ class _MapScreenState extends State<MapScreen> {
 
     points.add(_currentPosition!); // Close the polygon
 
-    setState(() {
-      _fieldOfVisionPolygon = points;
-    });
+    _fieldOfVisionPolygon = points;
   }
 
   @override

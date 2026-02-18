@@ -11,15 +11,22 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
+  static const int _totalPages = 3;
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
-  void _nextPage() {
-    if (_currentPage < 2) {
+  Future<void> _finishOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('showOnboarding', false);
+    if (!mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+  }
+
+  void _nextPage() async {
+    if (_currentPage < _totalPages - 1) {
       _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
     } else {
-      // On last page, finish onboarding
-      Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+      await _finishOnboarding();
     }
   }
 
@@ -65,7 +72,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   else
                     const SizedBox(width: 64),
                   Row(
-                    children: List.generate(5, (index) => Container(
+                    children: List.generate(_totalPages, (index) => Container(
                       margin: const EdgeInsets.symmetric(horizontal: 4),
                       width: 10,
                       height: 10,
@@ -77,7 +84,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                   TextButton(
                     onPressed: _nextPage,
-                    child: Text(_currentPage == 1 ? 'Continue' : 'Next'),
+                    child: Text(_currentPage == _totalPages - 1 ? 'Finish' : 'Next'),
                   ),
                 ],
               ),
@@ -221,6 +228,7 @@ class _PermissionStepState extends State<_PermissionStep> {
     setState(() => _isRequesting = true);
     final perm = _permissions[_permIndex].permission;
     final status = await perm.request();
+    if (!mounted) return;
     setState(() => _isRequesting = false);
     if (status.isGranted) {
       if (_permIndex < _permissions.length - 1) {

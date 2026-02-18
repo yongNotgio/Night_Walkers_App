@@ -1,24 +1,25 @@
-import 'package:telephony/telephony.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
+import 'package:night_walkers_app/services/direct_sms_service.dart';
 
 class SmsService {
-  static final Telephony telephony = Telephony.instance;
-
   // Send location SMS to all saved emergency contacts
   static Future<void> sendLocationSms(double latitude, double longitude) async {
     try {
       // Check SMS permission
-      bool? permissionsGranted = await telephony.requestSmsPermissions;
-      if (permissionsGranted != true) {
-        print('SMS permissions not granted');
+      final smsPermission = await Permission.sms.request();
+      final phonePermission = await Permission.phone.request();
+      if (!smsPermission.isGranted || !phonePermission.isGranted) {
+        debugPrint('SMS permissions not granted');
         return;
       }
 
       // Load contacts
       final contacts = await _loadContacts();
       if (contacts.isEmpty) {
-        print('No emergency contacts found');
+        debugPrint('No emergency contacts found');
         return;
       }
 
@@ -31,12 +32,12 @@ class SmsService {
       for (final contact in contacts) {
         final String phoneNumber = contact['number'] ?? '';
         if (phoneNumber.isNotEmpty) {
-          await telephony.sendSms(to: phoneNumber, message: message);
-          print('Emergency SMS sent to ${contact['name']} ($phoneNumber)');
+          await DirectSmsService.sendSms(to: phoneNumber, message: message);
+          debugPrint('Emergency SMS sent to ${contact['name']} ($phoneNumber)');
         }
       }
     } catch (e) {
-      print('Error sending SMS: $e');
+      debugPrint('Error sending SMS: $e');
     }
   }
 

@@ -1,4 +1,5 @@
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter/foundation.dart';
 
 class LocationService {
   /// Check if location services are enabled
@@ -35,7 +36,7 @@ class LocationService {
         desiredAccuracy: LocationAccuracy.high,
       );
     } catch (e) {
-      print('Error getting location: $e');
+      debugPrint('Error getting location: $e');
       return null;
     }
   }

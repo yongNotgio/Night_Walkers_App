@@ -1,11 +1,12 @@
 import 'package:torch_light/torch_light.dart';
+import 'package:flutter/foundation.dart';
 
 class FlashlightService {
   static Future<void> turnOn() async {
     try {
       await TorchLight.enableTorch();
     } catch (e) {
-      print('Could not turn on flashlight: $e');
+      debugPrint('Could not turn on flashlight: $e');
     }
   }
 
@@ -13,7 +14,7 @@ class FlashlightService {
     try {
       await TorchLight.disableTorch();
     } catch (e) {
-      print('Could not turn off flashlight: $e');
+      debugPrint('Could not turn off flashlight: $e');
     }
   }
 

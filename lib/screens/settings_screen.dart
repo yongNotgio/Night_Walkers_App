@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:another_telephony/telephony.dart';
+import 'dart:convert';
+import 'package:night_walkers_app/services/direct_sms_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -18,7 +21,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _quickActivation = false;
   double _flashlightBlinkSpeed = 167.0; // milliseconds
   String _customMessage = 'This is an emergency! Please help me immediately!';
-  String _selectedRingtone = 'Default Alarm';
+  String _selectedRingtone = 'alarm.wav';
   bool _confirmBeforeActivation = true;
   bool _sendLocationAsPlainText = true;
   bool _batterySaverEnabled = false;
@@ -27,6 +30,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _call911Enabled = false;
 
   final TextEditingController _messageController = TextEditingController();
+  final Telephony _telephony = Telephony.instance;
 
   final Map<String, String> _ringtoneOptions = {
     'Default Alarm': 'alarm.wav',
@@ -60,8 +64,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _customMessage =
           prefs.getString('custom_message') ??
           'This is an emergency! Please help me immediately!';
-      _selectedRingtone =
-          prefs.getString('selected_ringtone') ?? 'Default Alarm';
+      final storedRingtone = prefs.getString('selected_ringtone');
+      _selectedRingtone = _normalizeRingtoneValue(storedRingtone);
       _confirmBeforeActivation =
           prefs.getBool('confirm_before_activation') ?? true;
       _messageController.text = _customMessage;
@@ -71,6 +75,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _alarmVolume = prefs.getDouble('alarm_volume') ?? 1.0;
       _call911Enabled = prefs.getBool('call_911_enabled') ?? false;
     });
+    final storedRingtone = prefs.getString('selected_ringtone');
+    if (storedRingtone != _selectedRingtone) {
+      await prefs.setString('selected_ringtone', _selectedRingtone);
+    }
+  }
+
+  String _normalizeRingtoneValue(String? value) {
+    if (value == null || value.isEmpty) return 'alarm.wav';
+    return _ringtoneOptions[value] ?? value;
   }
 
   Future<void> _saveSetting(String key, dynamic value) async {
@@ -102,9 +115,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onPressed: () async {
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.clear();
-                  Navigator.pop(context);
+                  if (!mounted) return;
+                  Navigator.pop(this.context);
                   _loadSettings();
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  ScaffoldMessenger.of(this.context).showSnackBar(
                     const SnackBar(content: Text('Settings reset to defaults')),
                   );
                 },
@@ -142,6 +156,161 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
     );
+  }
+
+  Future<void> _showSmsDiagnostics({required bool sendTest}) async {
+    final report = await _collectSmsDiagnostics(sendTest: sendTest);
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            title: Text(sendTest ? 'SMS Diagnostics (With Send Test)' : 'SMS Diagnostics'),
+            content: SingleChildScrollView(
+              child: SelectableText(
+                report,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close'),
+              ),
+              if (!sendTest)
+                TextButton(
+                  onPressed: () async {
+                    Navigator.pop(dialogContext);
+                    await _showSmsDiagnostics(sendTest: true);
+                  },
+                  child: const Text('Run Send Test'),
+                ),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(dialogContext);
+                  await _showSmsDiagnostics(sendTest: false);
+                },
+                child: const Text('Refresh'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Future<String> _collectSmsDiagnostics({required bool sendTest}) async {
+    final buffer = StringBuffer();
+    buffer.writeln('Time: ${DateTime.now().toIso8601String()}');
+    buffer.writeln('Mode: ${sendTest ? 'Diagnostics + send test' : 'Diagnostics only'}');
+    buffer.writeln('');
+
+    final pluginPermissionResult =
+        await _probe(() => _telephony.requestPhoneAndSmsPermissions);
+    final smsStatus = await Permission.sms.status;
+    final phoneStatus = await Permission.phone.status;
+
+    buffer.writeln('Permissions');
+    buffer.writeln('  Plugin requestPhoneAndSmsPermissions: $pluginPermissionResult');
+    buffer.writeln('  permission_handler.sms: $smsStatus');
+    buffer.writeln('  permission_handler.phone: $phoneStatus');
+    buffer.writeln('');
+
+    final isSmsCapable = await _probe(() => _telephony.isSmsCapable);
+    final simState = await _probe(() => _telephony.simState);
+    final simOperator = await _probe(() => _telephony.simOperator);
+    final simOperatorName = await _probe(() => _telephony.simOperatorName);
+    final networkOperator = await _probe(() => _telephony.networkOperator);
+    final networkOperatorName = await _probe(() => _telephony.networkOperatorName);
+    final phoneType = await _probe(() => _telephony.phoneType);
+    final dataNetworkType = await _probe(() => _telephony.dataNetworkType);
+    final serviceState = await _probe(() => _telephony.serviceState);
+    final isNetworkRoaming = await _probe(() => _telephony.isNetworkRoaming);
+    final nativeSmsDiagnostics = await _probe(() => DirectSmsService.getDiagnostics());
+
+    buffer.writeln('Telephony');
+    buffer.writeln('  isSmsCapable: $isSmsCapable');
+    buffer.writeln('  simState: $simState');
+    buffer.writeln('  simOperator: $simOperator');
+    buffer.writeln('  simOperatorName: $simOperatorName');
+    buffer.writeln('  networkOperator: $networkOperator');
+    buffer.writeln('  networkOperatorName: $networkOperatorName');
+    buffer.writeln('  phoneType: $phoneType');
+    buffer.writeln('  dataNetworkType: $dataNetworkType');
+    buffer.writeln('  serviceState: $serviceState');
+    buffer.writeln('  isNetworkRoaming: $isNetworkRoaming');
+    buffer.writeln('');
+    buffer.writeln('Native SMS Manager');
+    buffer.writeln('  diagnostics: $nativeSmsDiagnostics');
+    buffer.writeln('');
+
+    final prefs = await SharedPreferences.getInstance();
+    final contactsJson = prefs.getString('emergency_contacts');
+    List<Map<String, String>> contacts = [];
+    if (contactsJson != null) {
+      final decoded = jsonDecode(contactsJson) as List;
+      contacts =
+          decoded
+              .map(
+                (item) => {
+                  'name': item['name'].toString(),
+                  'number': item['number'].toString(),
+                },
+              )
+              .toList();
+    }
+    buffer.writeln('Contacts');
+    buffer.writeln('  saved_contacts_count: ${contacts.length}');
+    if (contacts.isNotEmpty) {
+      buffer.writeln('  first_contact: ${contacts.first['name']} (${contacts.first['number']})');
+    }
+    buffer.writeln('');
+
+    if (sendTest) {
+      String? firstNumber;
+      for (final contact in contacts) {
+        final number = (contact['number'] ?? '').trim();
+        if (number.isNotEmpty) {
+          firstNumber = number;
+          break;
+        }
+      }
+      if (firstNumber == null) {
+        buffer.writeln('Send Test');
+        buffer.writeln('  result: skipped (no emergency contact number saved)');
+      } else {
+        final String targetNumber = firstNumber;
+        final message =
+            'Night Walkers SMS diagnostics test: ${DateTime.now().toIso8601String()}';
+        final sendError = await _captureError(
+          () => DirectSmsService.sendSms(to: targetNumber, message: message),
+        );
+        buffer.writeln('Send Test');
+        buffer.writeln('  to: $targetNumber');
+        buffer.writeln(
+          sendError == null
+              ? '  result: sendSms call succeeded (carrier delivery still not guaranteed)'
+              : '  result: failed -> $sendError',
+        );
+      }
+    }
+
+    return buffer.toString();
+  }
+
+  Future<Object?> _probe(Future<Object?> Function() action) async {
+    try {
+      return await action();
+    } catch (e) {
+      return 'error: $e';
+    }
+  }
+
+  Future<String?> _captureError(Future<Object?> Function() action) async {
+    try {
+      await action();
+      return null;
+    } catch (e) {
+      return '$e';
+    }
   }
 
   @override
@@ -389,6 +558,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: () => openAppSettings(),
               ),
               ListTile(
+                title: const Text('SMS Diagnostics'),
+                subtitle: const Text(
+                  'Check SIM, permissions, telephony state, and run a direct SMS test',
+                ),
+                trailing: const Icon(Icons.sms_outlined),
+                onTap: () => _showSmsDiagnostics(sendTest: false),
+              ),
+              ListTile(
                 title: const Text('Test Features'),
                 subtitle: const Text(
                   'Test panic features without sending alerts',
@@ -433,8 +610,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 final prefs =
                                     await SharedPreferences.getInstance();
                                 await prefs.clear();
-                                Navigator.pop(context);
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                if (!mounted) return;
+                                Navigator.pop(this.context);
+                                ScaffoldMessenger.of(this.context).showSnackBar(
                                   const SnackBar(
                                     content: Text('All data cleared'),
                                   ),

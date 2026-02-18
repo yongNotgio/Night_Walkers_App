@@ -6,6 +6,7 @@ import 'package:night_walkers_app/widgets/status_dashboard.dart';
 import 'package:night_walkers_app/screens/map_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:night_walkers_app/services/flashlight_service.dart';
+import 'package:night_walkers_app/services/sound_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,10 +26,10 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _quickActivation = false;
   double _flashlightBlinkSpeed = 167.0;
   String _customMessage = 'This is an emergency! Please help me immediately!';
-  String _selectedRingtone = 'Default Alarm';
+  String _selectedRingtone = 'alarm.wav';
   bool _confirmBeforeActivation = true;
   bool _flashlightOn = false;
-  bool _sendLocationAsPlainText = false;
+  bool _sendLocationAsPlainText = true;
   bool _batterySaverEnabled = false;
   bool _alwaysMaxVolume = false;
   double _alarmVolume = 1.0;
@@ -50,7 +51,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _quickActivation = prefs.getBool('quick_activation') ?? false;
       _flashlightBlinkSpeed = prefs.getDouble('flashlight_blink_speed') ?? 167.0;
       _customMessage = prefs.getString('custom_message') ?? 'This is an emergency! Please help me immediately!';
-      _selectedRingtone = prefs.getString('selected_ringtone') ?? 'Default Alarm';
+      final storedRingtone = prefs.getString('selected_ringtone');
+      _selectedRingtone = SoundService.normalizeFilename(storedRingtone);
       _confirmBeforeActivation = prefs.getBool('confirm_before_activation') ?? true;
       _sendLocationAsPlainText = prefs.getBool('send_location_as_plain_text') ?? false;
       _batterySaverEnabled = prefs.getBool('battery_saver_enabled') ?? false;
@@ -58,6 +60,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _alarmVolume = prefs.getDouble('alarm_volume') ?? 1.0;
       _call911Enabled = prefs.getBool('call_911_enabled') ?? false;
     });
+    final storedRingtone = prefs.getString('selected_ringtone');
+    if (storedRingtone != _selectedRingtone) {
+      await prefs.setString('selected_ringtone', _selectedRingtone);
+    }
   }
 
   List<Widget> get _screens => <Widget>[
@@ -80,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         Padding(
           padding: const EdgeInsets.all(16.0), 
-          child: StatusDashboard(),
+          child: const StatusDashboard(),
         ),
         Expanded(
           child: Center(
@@ -107,9 +113,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ],
     ),
-    MapScreen(),
-    ContactsScreen(),
-    SettingsScreen(),
+    const MapScreen(),
+    const ContactsScreen(),
+    const SettingsScreen(),
   ];
 
   void _onItemTapped(int index) {
@@ -207,11 +213,18 @@ class _HomeScreenState extends State<HomeScreen> {
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.maps_home_work_outlined), label: 'Map'),BottomNavigationBarItem(
+          BottomNavigationBarItem(
+            icon: Icon(Icons.maps_home_work_outlined),
+            label: 'Map',
+          ),
+          BottomNavigationBarItem(
             icon: Icon(Icons.contact_phone),
             label: 'Contacts',
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.settings_applications), label: 'settings'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings_applications),
+            label: 'Settings',
+          ),
         ],
       ),
     );

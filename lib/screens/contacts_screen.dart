@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:telephony/telephony.dart';
 import 'dart:convert';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:night_walkers_app/services/direct_sms_service.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -15,14 +17,19 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   final TextEditingController nameController = TextEditingController();
   final TextEditingController numberController = TextEditingController();
-  final Telephony telephony = Telephony.instance;
-
   int? editingIndex;
 
   @override
   void initState() {
     super.initState();
     loadContacts();
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    numberController.dispose();
+    super.dispose();
   }
 
   Future<void> saveContacts() async {
@@ -70,6 +77,86 @@ class _ContactsScreenState extends State<ContactsScreen> {
     saveContacts();
   }
 
+  String _normalizePhoneForCompare(String input) {
+    return input.replaceAll(RegExp(r'[^0-9+]'), '');
+  }
+
+  Future<void> _importFromPhoneContacts() async {
+    final hasPermission = await FlutterContacts.requestPermission(readonly: true);
+    if (!hasPermission) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Contacts permission denied')),
+      );
+      return;
+    }
+
+    final picked = await FlutterContacts.openExternalPick();
+    if (picked == null) return;
+    if (!mounted) return;
+
+    if (picked.phones.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selected contact has no phone number')),
+      );
+      return;
+    }
+
+    String selectedNumber = picked.phones.first.number;
+    if (picked.phones.length > 1) {
+      final number = await showModalBottomSheet<String>(
+        context: context,
+        builder:
+            (context) => SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    title: Text('Select number for ${picked.displayName}'),
+                  ),
+                  ...picked.phones.map(
+                    (phone) => ListTile(
+                      leading: const Icon(Icons.phone),
+                      title: Text(phone.number),
+                      onTap: () => Navigator.pop(context, phone.number),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+      );
+      if (number == null || number.trim().isEmpty) return;
+      selectedNumber = number;
+    }
+    if (!mounted) return;
+
+    final normalizedImported = _normalizePhoneForCompare(selectedNumber.trim());
+    final duplicateExists = contacts.any(
+      (contact) =>
+          _normalizePhoneForCompare(contact['number'] ?? '') ==
+          normalizedImported,
+    );
+
+    if (duplicateExists) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This number is already in your emergency contacts')),
+      );
+      return;
+    }
+
+    setState(() {
+      contacts.add({
+        'name': picked.displayName.isEmpty ? 'Unnamed Contact' : picked.displayName,
+        'number': selectedNumber.trim(),
+      });
+    });
+    await saveContacts();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Imported ${picked.displayName}')),
+    );
+  }
+
   void startEdit(int index) {
     setState(() {
       editingIndex = index;
@@ -91,18 +178,18 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> sendEmergencySms(String number, String message) async {
-    final bool? permissionsGranted = await telephony.requestSmsPermissions;
-    if (permissionsGranted == true) {
-      await telephony.sendSms(
-        to: number,
-        message: message,
-      );
+    final smsPermission = await Permission.sms.request();
+    final phonePermission = await Permission.phone.request();
+    if (!mounted) return;
+    if (smsPermission.isGranted && phonePermission.isGranted) {
+      await DirectSmsService.sendSms(to: number, message: message);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("SMS sent to $number")),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("SMS permission denied")),
+        const SnackBar(content: Text("SMS/Phone permission denied")),
       );
     }
   }
@@ -176,6 +263,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         editingIndex == null ? 'Add Contact' : 'Update Contact',
                         style: TextStyle(fontSize: 16),
                       ),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: _importFromPhoneContacts,
+                      icon: const Icon(Icons.contact_phone),
+                      label: const Text('Import from Phone'),
                     ),
                   ],
                 ),

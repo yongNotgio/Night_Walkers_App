@@ -63,6 +63,7 @@ class _StatusDashboardState extends State<StatusDashboard> {
                                             ElevatedButton(
                                               onPressed: () async {
                                                 final status = await p.permission.request();
+                                                if (!context.mounted) return;
                                                 if (status.isGranted) {
                                                   Navigator.of(context).pop();
                                                   setState(() {}); // Refresh dashboard

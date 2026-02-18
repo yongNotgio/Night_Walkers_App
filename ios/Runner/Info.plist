@@ -45,5 +45,13 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Your location is used to share your position with emergency contacts during alerts.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Your location may be used to keep safety features accurate while the app is active.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Camera access is required to use the flashlight as a distress signal.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Contacts access is used to import emergency contacts into the app.</string>
 </dict>
 </plist>
