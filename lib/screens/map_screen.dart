@@ -122,84 +122,112 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body:
-          !_isConnected
-              ? const Center(
-                  child: Text(
-                    'No internet connection. Map cannot be loaded.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 18, color: Colors.red),
-                  ),
-                )
-              : _currentPosition == null
-                  ? const Center(child: CircularProgressIndicator())
-                  : Stack(
-                children: [
-                  FlutterMap(
-                    options: MapOptions(center: _currentPosition, zoom: 16, rotation: -(_heading ?? 0)),
-                    children: [
-                      TileLayer(
-                        urlTemplate: _mapStyles[_selectedMap]!,
-                        userAgentPackageName: 'com.example.night_walkers_app',
-                      ),
-                      PolygonLayer(
-                        polygons: [
-                          Polygon(
-                            points: _fieldOfVisionPolygon,
-                            color: Colors.blueAccent.withOpacity(0.3),
-                            borderColor: Colors.blueAccent,
-                            borderStrokeWidth: 1.0,
-                            isFilled: true,
-                          ),
-                        ],
-                      ),
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            width: 80,
-                            height: 80,
-                            point: _currentPosition!,
-                            child: UserLocationMarker(heading: _heading ?? 0.0),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  Positioned(
-                    top: 40,
-                    right: 10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      color: Colors.white.withOpacity(0.9),
-                      child: DropdownButton<String>(
-                        value: _selectedMap,
-                        underline: const SizedBox(),
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedMap = value!;
-                          });
-                        },
-                        items:
-                            _mapStyles.keys.map((style) {
-                              return DropdownMenuItem<String>(
-                                value: style,
-                                child: Text(style),
-                              );
-                            }).toList(),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: 100,
-                    right: 10,
-                    child: FixedCompass(heading: _heading ?? 0.0),
+    if (!_isConnected) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'No internet connection. Map cannot be loaded.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 18, color: Colors.red),
+          ),
+        ),
+      );
+    }
+    if (_currentPosition == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Stack(
+        children: [
+          FlutterMap(
+            options: MapOptions(
+              center: _currentPosition,
+              zoom: 16,
+              rotation: -(_heading ?? 0),
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: _mapStyles[_selectedMap]!,
+                userAgentPackageName: 'com.example.night_walkers_app',
+              ),
+              PolygonLayer(
+                polygons: [
+                  Polygon(
+                    points: _fieldOfVisionPolygon,
+                    color: Colors.blueAccent.withOpacity(0.3),
+                    borderColor: Colors.blueAccent,
+                    borderStrokeWidth: 1.0,
+                    isFilled: true,
                   ),
                 ],
               ),
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    width: 80,
+                    height: 80,
+                    point: _currentPosition!,
+                    child: UserLocationMarker(heading: _heading ?? 0.0),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          Positioned(
+            top: 12,
+            left: 12,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.92),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                'Live Map',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 12,
+            right: 12,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.92),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: DropdownButton<String>(
+                value: _selectedMap,
+                underline: const SizedBox(),
+                borderRadius: BorderRadius.circular(10),
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() {
+                    _selectedMap = value;
+                  });
+                },
+                items: _mapStyles.keys
+                    .map(
+                      (style) => DropdownMenuItem<String>(
+                        value: style,
+                        child: Text(style),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 72,
+            right: 12,
+            child: FixedCompass(heading: _heading ?? 0.0),
+          ),
+        ],
+      ),
     );
   }
 }

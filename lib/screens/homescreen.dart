@@ -7,6 +7,7 @@ import 'package:night_walkers_app/screens/map_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:night_walkers_app/services/flashlight_service.dart';
 import 'package:night_walkers_app/services/sound_service.dart';
+import 'package:night_walkers_app/services/direct_sms_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -54,7 +55,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final storedRingtone = prefs.getString('selected_ringtone');
       _selectedRingtone = SoundService.normalizeFilename(storedRingtone);
       _confirmBeforeActivation = prefs.getBool('confirm_before_activation') ?? true;
-      _sendLocationAsPlainText = prefs.getBool('send_location_as_plain_text') ?? false;
+      _sendLocationAsPlainText = prefs.getBool('send_location_as_plain_text') ?? true;
       _batterySaverEnabled = prefs.getBool('battery_saver_enabled') ?? false;
       _alwaysMaxVolume = prefs.getBool('always_max_volume') ?? false;
       _alarmVolume = prefs.getDouble('alarm_volume') ?? 1.0;
@@ -69,44 +70,53 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Widget> get _screens => <Widget>[
     Column(
       children: [
-        if (_batterySaverEnabled) // Show text when battery saver is enabled
+        if (_batterySaverEnabled)
           Container(
             width: double.infinity,
-            color: Theme.of(context).colorScheme.error.withOpacity(0.2), // Subtle background color
-            padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0), // Added horizontal padding
+            margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.orange.withOpacity(0.35)),
+            ),
             child: Text(
               'Battery Saver Mode Active',
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.error,
+                color: Color(0xFF9A3412),
               ),
-              textAlign: TextAlign.center, 
+              textAlign: TextAlign.center,
             ),
           ),
         Padding(
-          padding: const EdgeInsets.all(16.0), 
+          padding: const EdgeInsets.all(16.0),
           child: const StatusDashboard(),
         ),
         Expanded(
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.all(16.0), // Added padding here around the panic button
-              child: PanicButton(
-                soundEnabled: _soundEnabled,
-                vibrationEnabled: _vibrationEnabled,
-                flashlightEnabled: _flashlightEnabled,
-                flashlightBlinkSpeed: _flashlightBlinkSpeed,
-                selectedRingtone: _selectedRingtone,
-                autoLocationShare: _autoLocationShare,
-                customMessage: _customMessage,
-                quickActivation: _quickActivation,
-                confirmBeforeActivation: _confirmBeforeActivation,
-                sendLocationAsPlainText: _sendLocationAsPlainText,
-                batterySaverEnabled: _batterySaverEnabled,
-                alwaysMaxVolume: _alwaysMaxVolume,
-                alarmVolume: _alarmVolume,
-                call911Enabled: _call911Enabled,
+              padding: const EdgeInsets.all(16.0),
+              child: ValueListenableBuilder<int>(
+                valueListenable: DirectSmsService.volumeTriggerToken,
+                builder: (context, token, _) => PanicButton(
+                  soundEnabled: _soundEnabled,
+                  vibrationEnabled: _vibrationEnabled,
+                  flashlightEnabled: _flashlightEnabled,
+                  flashlightBlinkSpeed: _flashlightBlinkSpeed,
+                  selectedRingtone: _selectedRingtone,
+                  autoLocationShare: _autoLocationShare,
+                  customMessage: _customMessage,
+                  quickActivation: _quickActivation,
+                  confirmBeforeActivation: _confirmBeforeActivation,
+                  sendLocationAsPlainText: _sendLocationAsPlainText,
+                  batterySaverEnabled: _batterySaverEnabled,
+                  alwaysMaxVolume: _alwaysMaxVolume,
+                  alarmVolume: _alarmVolume,
+                  call911Enabled: _call911Enabled,
+                  externalTriggerToken: token,
+                ),
               ),
             ),
           ),
@@ -149,26 +159,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const Color unselectedColor = Colors.black;
-    const Color selectedColor = Color(0xFFB39DDB); // Light purple color
+    final titles = ['Night Walkers', 'Map', 'Contacts', 'Settings'];
 
     return Scaffold(
       appBar: AppBar(
-        title: _selectedIndex == 0 ? const Text('Night Walkers App') : null,
+        title: Text(titles[_selectedIndex]),
         actions: [
-          // Battery Saver Toggle Button
-          if (_selectedIndex == 0) // Only show on the home screen here
+          if (_selectedIndex == 0)
             IconButton(
               icon: Icon(
                 _batterySaverEnabled ? Icons.battery_saver : Icons.battery_alert_outlined,
-                color: _batterySaverEnabled ? Colors.greenAccent : Colors.amberAccent,
+                color: _batterySaverEnabled ? Colors.green : Colors.orange,
               ),
               tooltip: _batterySaverEnabled ? 'Battery Saver On' : 'Battery Saver Off',
               onPressed: _toggleBatterySaver,
             ),
-          if (_selectedIndex == 0) // Only show on the home screen
+          if (_selectedIndex == 0)
             IconButton(
-              icon: const Icon(Icons.info_outline, color: Color.fromARGB(179, 0, 0, 0)), // Info icon
+              icon: const Icon(Icons.info_outline),
               tooltip: 'About Battery Saver Mode',
               onPressed: () {
                 showDialog(
@@ -176,11 +184,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   builder: (context) => AlertDialog(
                     title: const Text('Battery Saver Mode'),
                     content: const Text(
-                      'Enabling Battery Saver Mode optimizes features like flashlight blinking speed and UI to conserve battery during emergencies. Recommended when battery is low.',
+                          'Enabling Battery Saver Mode optimizes features like flashlight blinking speed and UI to conserve battery during emergencies. Recommended when battery is low.',
                     ),
                     actions: [
                       TextButton(
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () => Navigator.of(context).pop(),
                         child: const Text('OK'),
                       ),
                     ],
@@ -193,10 +201,10 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _screens[_selectedIndex],
       floatingActionButton: _selectedIndex == 0
           ? Padding(
-              padding: const EdgeInsets.only(bottom: 70.0), 
+              padding: const EdgeInsets.only(bottom: 70.0),
               child: FloatingActionButton(
                 onPressed: _toggleFlashlight,
-                backgroundColor: _flashlightOn ? Colors.yellow : Colors.grey[800],
+                backgroundColor: _flashlightOn ? Colors.amber : const Color(0xFF0F4C81),
                 tooltip: _flashlightOn ? 'Turn Flashlight Off' : 'Turn Flashlight On',
                 child: Icon(
                   _flashlightOn ? Icons.flashlight_on : Icons.flashlight_off,
@@ -205,24 +213,21 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             )
           : null,
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        selectedItemColor: selectedColor,
-        unselectedItemColor: unselectedColor,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.maps_home_work_outlined),
-            label: 'Map',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.contact_phone),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: _onItemTapped,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Map'),
+          NavigationDestination(
+            icon: Icon(Icons.contact_phone_outlined),
+            selectedIcon: Icon(Icons.contact_phone),
             label: 'Contacts',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_applications),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
             label: 'Settings',
           ),
         ],
