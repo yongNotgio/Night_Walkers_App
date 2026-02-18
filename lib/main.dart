@@ -54,69 +54,73 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF0F4C81),
-      brightness: Brightness.light,
+    const baseScheme = ColorScheme(
+      brightness: Brightness.dark,
+      primary: Color(0xFF16E6FF),
+      onPrimary: Color(0xFF001019),
+      secondary: Color(0xFF0A66FF),
+      onSecondary: Colors.white,
+      error: Color(0xFFFF2A4F),
+      onError: Colors.white,
+      surface: Color(0xFF0C0F1A),
+      onSurface: Color(0xFFEAF8FF),
+      tertiary: Color(0xFFFF2A4F),
+      onTertiary: Colors.white,
     );
 
     return MaterialApp(
-      title: 'Night Walkers',
+      title: 'NightWalkers',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: baseScheme.copyWith(
-          primary: const Color(0xFF0F4C81),
-          secondary: const Color(0xFFF59E0B),
-          error: const Color(0xFFB42318),
-          surface: const Color(0xFFF7F9FC),
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF7F9FC),
+        colorScheme: baseScheme,
+        scaffoldBackgroundColor: const Color(0xFF0A0D17),
         appBarTheme: const AppBarTheme(
           centerTitle: false,
           elevation: 0,
           scrolledUnderElevation: 0,
-          backgroundColor: Color(0xFFF7F9FC),
-          foregroundColor: Color(0xFF0E2237),
+          backgroundColor: Color(0xFF0A0D17),
+          foregroundColor: Color(0xFFEAF8FF),
           titleTextStyle: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF0E2237),
+            color: Color(0xFFEAF8FF),
           ),
         ),
         cardTheme: CardThemeData(
           elevation: 0,
-          color: Colors.white,
+          color: const Color(0xFF11172A),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: Color(0xFFE4E7EC)),
+            side: const BorderSide(color: Color(0xFF1F325E)),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: Colors.white,
+          fillColor: const Color(0xFF121B33),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFFD0D5DD)),
+            borderSide: const BorderSide(color: Color(0xFF1F325E)),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFFD0D5DD)),
+            borderSide: const BorderSide(color: Color(0xFF1F325E)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFF0F4C81), width: 1.4),
+            borderSide: const BorderSide(color: Color(0xFF16E6FF), width: 1.4),
           ),
         ),
         snackBarTheme: SnackBarThemeData(
           behavior: SnackBarBehavior.floating,
-          backgroundColor: const Color(0xFF0E2237),
+          backgroundColor: const Color(0xFF0F1426),
           contentTextStyle: const TextStyle(color: Colors.white),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       ),
       routes: {
         '/': (context) => Semantics(
-              label: 'Night Walkers home screen',
+              label: 'NightWalkers home screen',
               child: const HomeScreen(),
             ),
         '/onboarding': (context) => const OnboardingScreen(),

@@ -192,7 +192,7 @@ class VolumeTriggerService : Service() {
             Notification.Builder(this)
         }
         return builder
-            .setContentTitle("Night Walkers background mode")
+            .setContentTitle("NightWalkers background mode")
             .setContentText(statusText)
             .setSmallIcon(android.R.drawable.ic_lock_silent_mode_off)
             .setOngoing(true)

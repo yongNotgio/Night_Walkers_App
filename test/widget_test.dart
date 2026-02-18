@@ -12,7 +12,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Night Walkers'), findsOneWidget);
+    expect(find.text('NightWalkers'), findsOneWidget);
     expect(find.text('Setup takes less than a minute.'), findsOneWidget);
   });
 }

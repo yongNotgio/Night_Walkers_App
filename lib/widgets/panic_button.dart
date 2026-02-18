@@ -8,7 +8,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:volume_controller/volume_controller.dart';
-import 'package:night_walkers_app/widgets/panic_countdown_overlay.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:night_walkers_app/services/direct_sms_service.dart';
@@ -21,8 +20,6 @@ class PanicButton extends StatefulWidget {
   final String selectedRingtone;
   final bool autoLocationShare;
   final String customMessage;
-  final bool quickActivation;
-  final bool confirmBeforeActivation;
   final bool sendLocationAsPlainText;
   final bool batterySaverEnabled;
   final bool alwaysMaxVolume;
@@ -39,8 +36,6 @@ class PanicButton extends StatefulWidget {
     required this.selectedRingtone,
     required this.autoLocationShare,
     required this.customMessage,
-    required this.quickActivation,
-    required this.confirmBeforeActivation,
     required this.sendLocationAsPlainText,
     required this.batterySaverEnabled,
     required this.alwaysMaxVolume,
@@ -66,112 +61,79 @@ class _PanicButtonState extends State<PanicButton> {
   final Color dimRed = Colors.redAccent.shade100.withAlpha(51);
 
   void _startBlinking() async {
-    bool confirmed = true; // Assume confirmed by default ....
+    setState(() {
+      _isBlinking = true;
+      _isRed = true;
+    });
 
-    if (!widget.quickActivation && widget.confirmBeforeActivation) {
-      // Show SA USEER PanicCountdownOverlay
-      final result = await showDialog<bool>( // Get the result directly
-        context: context,
-        barrierDismissible: false, // MUNI GA Prevent dismissing by tapping outsiE
-        builder: (context) => PanicCountdownOverlay(
-          onCountdownComplete: () {
-            // The overlay will pop itself with true on completion
-            Navigator.of(context).pop(true); // Add pop back for completion
-          },
-          onCancel: () {
-            // Call _stopBlinking BEFORE popping the dialog
-            _stopBlinking(); 
-            Navigator.of(context).pop(false); // Pop with false on cancellation
-          },
+    if (widget.flashlightEnabled) {
+      await FlashlightService.turnOn();
+    }
+    if (widget.soundEnabled) {
+      _initialVolume = await VolumeController.instance.getVolume();
+      final double targetVolume = widget.alwaysMaxVolume ? 1.0 : widget.alarmVolume;
+      await VolumeController.instance.setVolume(targetVolume);
+      SoundService.playAlarm(filename: widget.selectedRingtone, volume: 1.0);
+    }
+    if (!mounted) return;
+
+    _snackBarController = ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          'Long press the button to stop the alarm!',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            letterSpacing: 1.2,
+          ),
+          textAlign: TextAlign.center,
         ),
+        backgroundColor: Colors.redAccent,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(16)),
+        ),
+        duration: const Duration(seconds: 5),
+      ),
+    );
+
+    _blinkTimer?.cancel();
+    if (widget.flashlightEnabled) {
+      final int blinkSpeed = widget.batterySaverEnabled ? 500 : widget.flashlightBlinkSpeed.round();
+      _blinkTimer = Timer.periodic(
+        Duration(milliseconds: blinkSpeed),
+        (timer) async {
+          setState(() {
+            _isRed = !_isRed;
+          });
+          await FlashlightService.toggle(_isRed);
+        },
       );
-
-      confirmed = result ?? false; // Assign the result to confirmed, handle null case
-
-      // If confirmed is false (cancelled), the stopping is handled by the onCancel callback.
-      // We just need to prevent the activation logic below from running.
-      if (confirmed == false) {
-        return; 
-      }
-       // If confirmed is true, proceed with the activation logic below.
     }
 
-    // Proceed with activation only if confirmed is true (or if no confirmation was needed)
-    if (confirmed == true) {
-      setState(() {
-        _isBlinking = true; 
-        _isRed = true;
-      });
+    if (widget.vibrationEnabled) {
+      _vibrate();
+    }
 
-      if (widget.flashlightEnabled) {
-        await FlashlightService.turnOn();
+    Position? position;
+    if (widget.autoLocationShare) {
+      position = await _getCurrentLocation();
+    }
+    String message = widget.customMessage;
+    if (position != null) {
+      message +=
+          ' My location coordinates are: Latitude ${position.latitude}, Longitude ${position.longitude}';
+    }
+    if (widget.autoLocationShare) {
+      try {
+        await _sendEmergencySmsToAllContacts(message);
+      } catch (e) {
+        debugPrint('Failed to send SMS: $e');
       }
-      if (widget.soundEnabled) {
-        _initialVolume = await VolumeController.instance.getVolume();
-        final double targetVolume = widget.alwaysMaxVolume ? 1.0 : widget.alarmVolume;
-        await VolumeController.instance.setVolume(targetVolume);
-        SoundService.playAlarm(filename: widget.selectedRingtone, volume: 1.0);
-      }
-      if (!mounted) return;
+    }
 
-      _snackBarController = ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            'Long press the button to stop the alarm!',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              letterSpacing: 1.2,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          backgroundColor: Colors.redAccent,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(Radius.circular(16)),
-          ),
-          duration: const Duration(seconds: 5),
-        ),
-      );
-
-      _blinkTimer?.cancel();
-      if (widget.flashlightEnabled) {
-        final int blinkSpeed = widget.batterySaverEnabled ? 500 : widget.flashlightBlinkSpeed.round();
-        _blinkTimer = Timer.periodic(
-          Duration(milliseconds: blinkSpeed),
-          (timer) async {
-            setState(() {
-              _isRed = !_isRed;
-            });
-            await FlashlightService.toggle(_isRed);
-          },
-        );
-      }
-
-      if (widget.vibrationEnabled) {
-        _vibrate();
-      }
-
-      Position? position;
-      if (widget.autoLocationShare) {
-        position = await _getCurrentLocation();
-      }
-      String message = widget.customMessage;
-      if (position != null) {
-        message +=
-            ' My location coordinates are: Latitude ${position.latitude}, Longitude ${position.longitude}';
-      }
-      if (widget.autoLocationShare) {
-        try {
-          await _sendEmergencySmsToAllContacts(message);
-        } catch (e) {
-          debugPrint('Failed to send SMS: $e');
-        }
-      }
-
-      if (widget.call911Enabled) {
-        _initiate911Call();
-      }
+    if (widget.call911Enabled) {
+      _initiate911Call();
     }
   }
 
@@ -339,23 +301,16 @@ class _PanicButtonState extends State<PanicButton> {
 
   @override
   Widget build(BuildContext context) {
-    final Color baseColor = widget.batterySaverEnabled ? Colors.grey.shade900 : Colors.redAccent.shade100;
-    final Color activeColor = widget.batterySaverEnabled ? Colors.grey.shade700 : const Color.fromARGB(255, 255, 0, 0);
-    final Color inactiveColor = widget.batterySaverEnabled ? Colors.grey.shade800 : Colors.white;
+    final Color baseColor = widget.batterySaverEnabled ? Colors.grey.shade900 : const Color(0xFF0A0D17);
+    final Color activeColor = widget.batterySaverEnabled ? Colors.grey.shade700 : const Color(0xFF16E6FF);
+    final Color inactiveColor = widget.batterySaverEnabled ? Colors.grey.shade800 : const Color(0xFF0A0D17);
 
     final Color currentColor =
         _isBlinking
             ? (_isRed ? baseColor : activeColor)
             : inactiveColor;
 
-    final List<Shadow> glow = (widget.batterySaverEnabled || !_isBlinking || !_isRed)
-        ? []
-        : [
-            const Shadow(
-              color: Color.fromARGB(255, 215, 25, 25),
-              blurRadius: 30,
-            ),
-          ];
+    final Color borderColor = _isBlinking && _isRed ? const Color(0xFFFF2A4F) : const Color(0xFF16E6FF);
 
     return Center(
       child: AnimatedContainer(
@@ -364,8 +319,8 @@ class _PanicButtonState extends State<PanicButton> {
           shape: BoxShape.circle,
           gradient: LinearGradient(
             colors: [
-              widget.batterySaverEnabled ? Colors.grey.shade900 : Colors.redAccent.shade100,
-              widget.batterySaverEnabled ? Colors.grey.shade800 : Colors.red.shade700,
+              widget.batterySaverEnabled ? Colors.grey.shade900 : const Color(0xFF0A0D17),
+              widget.batterySaverEnabled ? Colors.grey.shade800 : const Color(0xFF10182E),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -373,7 +328,7 @@ class _PanicButtonState extends State<PanicButton> {
           boxShadow: [
             if (!widget.batterySaverEnabled)
               BoxShadow(
-                color: Colors.redAccent.withOpacity(0.5),
+                color: borderColor.withOpacity(0.45),
                 blurRadius: 40,
                 spreadRadius: 10,
                 offset: const Offset(0, 12),
@@ -386,7 +341,7 @@ class _PanicButtonState extends State<PanicButton> {
             ),
           ],
           border: Border.all(
-            color: widget.batterySaverEnabled ? Colors.grey.shade600 : Colors.white.withOpacity(0.7),
+            color: widget.batterySaverEnabled ? Colors.grey.shade600 : borderColor,
             width: widget.batterySaverEnabled ? 2 : 4,
           ),
         ),
@@ -401,26 +356,35 @@ class _PanicButtonState extends State<PanicButton> {
               splashColor: Colors.white24,
               onTap: _isBlinking ? null : _startBlinking,
               child: Padding(
-                padding: const EdgeInsets.all(60),
+                padding: const EdgeInsets.all(28),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.warning,
-                      color: currentColor,
-                      size: 90,
-                      shadows: glow,
-                    ),
-                    const SizedBox(height: 10),
-                    AnimatedDefaultTextStyle(
+                    AnimatedContainer(
                       duration: const Duration(milliseconds: 150),
-                      style: TextStyle(
-                        color: currentColor,
-                        fontSize: 90,
-                        fontWeight: FontWeight.bold,
-                        shadows: glow,
+                      height: 170,
+                      width: 170,
+                      decoration: const BoxDecoration(shape: BoxShape.circle),
+                      child: ClipOval(
+                        child: ColorFiltered(
+                          colorFilter: _isBlinking
+                              ? const ColorFilter.mode(Colors.transparent, BlendMode.srcATop)
+                              : ColorFilter.mode(currentColor.withOpacity(0.18), BlendMode.srcATop),
+                          child: Image.asset(
+                            'assets/images/logo_transparent.png',
+                            fit: BoxFit.cover,
+                          ),
+                        ),
                       ),
-                      child: const Text('SOS'),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'HOLD TO STOP',
+                      style: TextStyle(
+                        color: borderColor,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
                     ),
                   ],
                 ),

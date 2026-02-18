@@ -18,7 +18,7 @@
 
 
     <application
-        android:label="night_walkers_app"
+        android:label="NightWalkers"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

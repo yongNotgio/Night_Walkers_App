@@ -18,11 +18,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _vibrationEnabled = true;
   bool _flashlightEnabled = true;
   bool _autoLocationShare = true;
-  bool _quickActivation = false;
   double _flashlightBlinkSpeed = 167.0; // milliseconds
   String _customMessage = 'This is an emergency! Please help me immediately!';
   String _selectedRingtone = 'alarm.wav';
-  bool _confirmBeforeActivation = true;
   bool _sendLocationAsPlainText = true;
   bool _batterySaverEnabled = false;
   bool _alwaysMaxVolume = false; 
@@ -59,7 +57,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _vibrationEnabled = prefs.getBool('vibration_enabled') ?? true;
       _flashlightEnabled = prefs.getBool('flashlight_enabled') ?? true;
       _autoLocationShare = prefs.getBool('auto_location_share') ?? true;
-      _quickActivation = prefs.getBool('quick_activation') ?? false;
       _flashlightBlinkSpeed =
           prefs.getDouble('flashlight_blink_speed') ?? 167.0;
       _customMessage =
@@ -67,8 +64,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'This is an emergency! Please help me immediately!';
       final storedRingtone = prefs.getString('selected_ringtone');
       _selectedRingtone = _normalizeRingtoneValue(storedRingtone);
-      _confirmBeforeActivation =
-          prefs.getBool('confirm_before_activation') ?? true;
       _messageController.text = _customMessage;
       _sendLocationAsPlainText = prefs.getBool('send_location_as_plain_text') ?? true;
       _batterySaverEnabled = prefs.getBool('battery_saver_enabled') ?? false;
@@ -325,7 +320,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       } else {
         final String targetNumber = firstNumber;
         final message =
-            'Night Walkers SMS diagnostics test: ${DateTime.now().toIso8601String()}';
+            'NightWalkers SMS diagnostics test: ${DateTime.now().toIso8601String()}';
         final sendError = await _captureError(
           () => DirectSmsService.sendSms(to: targetNumber, message: message),
         );
@@ -577,29 +572,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: _backgroundModeEnabled,
                 onChanged: _setBackgroundMode,
               ),
-              SwitchListTile(
-                title: const Text('Quick Activation'),
-                subtitle: const Text(
-                  'Activate panic mode with single tap (removes confirmation)',
-                ),
-                value: _quickActivation,
-                onChanged: (value) {
-                  setState(() => _quickActivation = value);
-                  _saveSetting('quick_activation', value);
-                },
-              ),
-              if (!_quickActivation)
-                SwitchListTile(
-                  title: const Text('Confirmation Dialog'),
-                  subtitle: const Text(
-                    'Show confirmation before activating panic mode',
-                  ),
-                  value: _confirmBeforeActivation,
-                  onChanged: (value) {
-                    setState(() => _confirmBeforeActivation = value);
-                    _saveSetting('confirm_before_activation', value);
-                  },
-                ),
             ]),
 
             // Permissions Section

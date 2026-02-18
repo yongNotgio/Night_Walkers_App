@@ -24,11 +24,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _vibrationEnabled = true;
   bool _flashlightEnabled = true;
   bool _autoLocationShare = true;
-  bool _quickActivation = false;
   double _flashlightBlinkSpeed = 167.0;
   String _customMessage = 'This is an emergency! Please help me immediately!';
   String _selectedRingtone = 'alarm.wav';
-  bool _confirmBeforeActivation = true;
   bool _flashlightOn = false;
   bool _sendLocationAsPlainText = true;
   bool _batterySaverEnabled = false;
@@ -49,12 +47,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _vibrationEnabled = prefs.getBool('vibration_enabled') ?? true;
       _flashlightEnabled = prefs.getBool('flashlight_enabled') ?? true;
       _autoLocationShare = prefs.getBool('auto_location_share') ?? true;
-      _quickActivation = prefs.getBool('quick_activation') ?? false;
       _flashlightBlinkSpeed = prefs.getDouble('flashlight_blink_speed') ?? 167.0;
       _customMessage = prefs.getString('custom_message') ?? 'This is an emergency! Please help me immediately!';
       final storedRingtone = prefs.getString('selected_ringtone');
       _selectedRingtone = SoundService.normalizeFilename(storedRingtone);
-      _confirmBeforeActivation = prefs.getBool('confirm_before_activation') ?? true;
       _sendLocationAsPlainText = prefs.getBool('send_location_as_plain_text') ?? true;
       _batterySaverEnabled = prefs.getBool('battery_saver_enabled') ?? false;
       _alwaysMaxVolume = prefs.getBool('always_max_volume') ?? false;
@@ -108,8 +104,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   selectedRingtone: _selectedRingtone,
                   autoLocationShare: _autoLocationShare,
                   customMessage: _customMessage,
-                  quickActivation: _quickActivation,
-                  confirmBeforeActivation: _confirmBeforeActivation,
                   sendLocationAsPlainText: _sendLocationAsPlainText,
                   batterySaverEnabled: _batterySaverEnabled,
                   alwaysMaxVolume: _alwaysMaxVolume,
@@ -159,10 +153,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final titles = ['Night Walkers', 'Map', 'Contacts', 'Settings'];
+    final titles = ['NightWalkers', 'Map', 'Contacts', 'Settings'];
 
     return Scaffold(
       appBar: AppBar(
+        leading: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.asset('assets/images/logo.png', fit: BoxFit.cover),
+          ),
+        ),
         title: Text(titles[_selectedIndex]),
         actions: [
           if (_selectedIndex == 0)
