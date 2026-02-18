@@ -301,15 +301,6 @@ class _PanicButtonState extends State<PanicButton> {
 
   @override
   Widget build(BuildContext context) {
-    final Color baseColor = widget.batterySaverEnabled ? Colors.grey.shade900 : const Color(0xFF0A0D17);
-    final Color activeColor = widget.batterySaverEnabled ? Colors.grey.shade700 : const Color(0xFF16E6FF);
-    final Color inactiveColor = widget.batterySaverEnabled ? Colors.grey.shade800 : const Color(0xFF0A0D17);
-
-    final Color currentColor =
-        _isBlinking
-            ? (_isRed ? baseColor : activeColor)
-            : inactiveColor;
-
     final Color borderColor = _isBlinking && _isRed ? const Color(0xFFFF2A4F) : const Color(0xFF16E6FF);
 
     return Center(
@@ -356,34 +347,21 @@ class _PanicButtonState extends State<PanicButton> {
               splashColor: Colors.white24,
               onTap: _isBlinking ? null : _startBlinking,
               child: Padding(
-                padding: const EdgeInsets.all(28),
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 150),
-                      height: 170,
-                      width: 170,
+                      height: 230,
+                      width: 230,
                       decoration: const BoxDecoration(shape: BoxShape.circle),
                       child: ClipOval(
-                        child: ColorFiltered(
-                          colorFilter: _isBlinking
-                              ? const ColorFilter.mode(Colors.transparent, BlendMode.srcATop)
-                              : ColorFilter.mode(currentColor.withOpacity(0.18), BlendMode.srcATop),
-                          child: Image.asset(
-                            'assets/images/logo_transparent.png',
-                            fit: BoxFit.cover,
-                          ),
+                        child: Image.asset(
+                          'assets/images/logo_fixed.png',
+                          fit: BoxFit.cover,
+                          filterQuality: FilterQuality.high,
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'HOLD TO STOP',
-                      style: TextStyle(
-                        color: borderColor,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2,
                       ),
                     ),
                   ],
